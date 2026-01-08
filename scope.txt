@@ -1,0 +1,484 @@
+CRYPTO-SAFETY BROWSER EXTENSION
+SCOPE & THREAT MODEL
+
+Goal
+The goal of this extension is to reduce the risk of users being scammed while using browser-based crypto wallets by 
+detecting suspicious or malicious websites and warning the user before they interact.
+
+------------------------------------------------------------
+WHAT THE EXTENSION TRIES TO PREVENT
+------------------------------------------------------------
+
+Users being tricked into:
+
+- Entering seed phrases or private keys into fake forms
+- Connecting wallets to malicious dApps that:
+  - Drain tokens
+  - Request unlimited spending approvals (“unlimited spend”)
+- Signing transactions they do not understand
+- Visiting typo-squatted or fake versions of legitimate crypto sites
+
+------------------------------------------------------------
+WHAT THE EXTENSION TRIES TO PROTECT AGAINST
+------------------------------------------------------------
+
+- Clipboard hijacking (swapping crypto addresses)
+- Injected wallet popups/overlays designed to mimic real wallets
+
+------------------------------------------------------------
+MVP SCOPE (VERSION 1)
+------------------------------------------------------------
+
+Version 1 will ONLY focus on:
+
+- Browser-based crypto wallets (MetaMask, Phantom, etc.)
+- Phishing and scam websites targeting wallet users
+
+Out of scope for Version 1:
+
+- Mobile wallets
+- Hardware wallet firmware attacks
+- Operating system level malware
+
+------------------------------------------------------------
+ATTACKERS
+------------------------------------------------------------
+
+- Phishing sites imitating exchanges or popular dApps
+- Malicious “airdrop” or “claim” websites
+- Fake “wallet support” pages asking for seed phrases
+- Compromised but otherwise legitimate websites with injected scripts
+
+------------------------------------------------------------
+ASSUMPTIONS & LIMITATIONS
+------------------------------------------------------------
+
+The extension CANNOT:
+
+- Stop users who choose to ignore warnings and proceed anyway
+- Detect or remove malware installed on the operating system
+
+The extension CAN:
+
+- Observe the URL, page content, and certain behaviours
+- Compare websites against rules and reputation data
+- Show strong warnings before the user interacts with the site
+
+------------------------------------------------------------
+KEY SIGNALS THE EXTENSION CAN USE
+------------------------------------------------------------
+
+1. URL / Domain
+- Detect typo-squatting
+- Identify IP-only domains
+- Check whether domains appear on known good or known bad lists
+
+2. TLS / Scheme
+- HTTP vs HTTPS
+- Mixed content or suspicious security behaviour
+
+3. Page Content
+- Text such as: “seed phrase”, “recovery phrase”, “private key”
+- Fake wallet login pages
+- Pressure-based messaging designed to rush the user
+
+4. Form Elements
+- Inputs collecting sensitive wallet information
+- Multiple input fields matching 12 or 24-word seed phrases
+
+5. Scripts / Network Behaviour
+- External scripts from suspicious sources
+- Suspicious wallet API usage
+- Scripts reading or intercepting form values silently
+
+6. User Behaviour Signals
+- Page changing wallet addresses unexpectedly
+- Injected iframes appearing
+- Differences between copied and pasted addresses
+
+------------------------------------------------------------
+DETECTION APPROACHES
+------------------------------------------------------------
+
+1. Reputation-Based Detection
+- Blocklists of known malicious domains
+- Allowlists of trusted domains
+
+2. Heuristic / Rule-Based Detection
+- Additional logical rules used when reputation alone is not enough
+
+------------------------------------------------------------
+HEURISTIC / RULE-BASED DETECTION
+------------------------------------------------------------
+
+When a domain is not clearly known-good or known-bad, the extension will rely on heuristic (rule-based) detection. 
+These rules use the signals available (URL, content, forms, scripts, and behaviour) to estimate how likely it is that a page is trying to scam a crypto wallet user.
+
+Each rule describes:
+- What the rule is trying to detect
+- What signals it uses
+- How severe the risk is
+- What typical false positives might look like
+
+The rules below are intended for Version 1 and can be refined over time.
+
+------------------------------------------------------------
+1. SEED PHRASE / PRIVATE KEY HARVESTING
+------------------------------------------------------------
+
+Goal:
+Detect pages that try to collect a user’s seed phrase, recovery phrase, or private key.
+
+Signals used:
+- Page text containing phrases such as:
+  - "seed phrase", "recovery phrase", "secret recovery phrase"
+  - "private key", "wallet phrase", "12 words", "24 words"
+- Presence of input fields or textareas near these phrases
+- Multiple input fields that could reasonably match a 12 or 24 word seed phrase
+
+Heuristic:
+If the page both:
+- Contains seed phrase / private key related terms, AND
+- Provides form inputs or text areas allowing the user to enter these values,
+
+then classify the page as HIGH-RISK and trigger a strong warning.
+
+Risk level:
+- Very high. Legitimate dApps should never ask users to type their seed phrase into a web page.
+
+Potential false positives:
+- Educational or documentation pages that explain seed phrases but do not ask the user to submit anything.
+- Developer tools or test pages (low frequency for normal users).
+
+Mitigation for false positives:
+- Only trigger a strong warning when suspicious text AND interactive inputs are present.
+- Consider using a softer warning when only educational text is present and there is no form.
+
+------------------------------------------------------------
+2. FAKE WALLET SUPPORT / RECOVERY PAGES
+------------------------------------------------------------
+
+Goal:
+Detect fake support pages pretending to help fix wallet issues while stealing credentials or seed phrases.
+
+Signals used:
+- Presence of terms like:
+  - "support", "help desk", "customer support", "live support"
+  - Combined with "MetaMask", "Phantom", or other wallet names
+- Prominent calls to action such as:
+  - "unlock your wallet", "restore your wallet here", "fix failed transaction"
+- Forms that request:
+  - seed phrases, private keys, or full login details
+
+Heuristic:
+If the page:
+- Presents itself as "support" or "help" for a wallet or exchange, AND
+- Requests highly sensitive information (seed phrase, private key, or full login credentials),
+
+then classify as HIGH-RISK and warn that wallet providers will never ask for seed phrases via a website form.
+
+Risk level:
+- High. This is a common and effective scam pattern.
+
+Potential false positives:
+- Legitimate support portals that require normal account login (username/password) but do not ask for seed phrases.
+- General FAQ pages that mention support but do not ask for sensitive information.
+
+Mitigation for false positives:
+- Only escalate when "support/help" patterns are combined with sensitive-data requests.
+
+------------------------------------------------------------
+3. BRAND IMPERSONATION AND TYPOSQUATTING
+------------------------------------------------------------
+
+Goal:
+Detect sites that imitate well-known brands or dApps using lookalike domains and branding.
+
+Signals used:
+- Domain name similarity to well-known crypto services (e.g., slight misspellings, extra characters, wrong TLD)
+- Page content containing brand names, logos, or styling associated with a known service
+- Mismatches between the domain and the brand named on the page
+
+Heuristic:
+If the domain:
+- Looks similar to a known brand (e.g., one or two character differences), AND/OR
+- Uses a different TLD than the official site (e.g., ".net" instead of ".org"),
+AND
+- The page content heavily references that brand (logos, repeated name, "official" language),
+
+then classify as at least MEDIUM-RISK and warn the user that the site may be impersonating a known service.
+
+Risk level:
+- Medium to high, depending on similarity and other factors.
+
+Potential false positives:
+- Fan sites, dashboards, or community tools that mention the brand legitimately.
+- Regional or localized domains that are still official.
+
+Mitigation for false positives:
+- Cross-check with an allowlist of official domains for each brand.
+- Use stronger warnings only when the domain is not in the allowlist but content strongly suggests it is "official".
+
+------------------------------------------------------------
+4. SUSPICIOUS WALLET API USAGE PATTERNS
+------------------------------------------------------------
+
+Goal:
+Identify pages that appear to use wallet APIs in risky or unusual ways.
+
+Signals used:
+- Calls to browser wallet APIs (e.g., requesting account access, transaction signing, or token approvals)
+- Frequency and timing of these calls (e.g., repeated requests on page load without user action)
+- Requests that may indicate "unlimited spend" or broad token approvals
+
+Heuristic:
+If the page:
+- Triggers wallet connection or approval requests automatically without clear user interaction, OR
+- Appears to prompt for wide token approval (e.g., approvals for all tokens or unlimited amounts),
+
+then classify as at least MEDIUM-RISK and show a warning reminding the user to carefully read what they are approving.
+
+Risk level:
+- Medium. Many DeFi apps legitimately request approvals, but aggressive or repeated prompts can be a red flag.
+
+Potential false positives:
+- Legitimate dApps that ask for approvals in a non-malicious way.
+- Users revisiting apps that they have not previously approved.
+
+Mitigation for false positives:
+- Consider the combination of wallet API usage with other signals (suspicious domain, impersonation, etc.).
+- Use softer warnings for normal-looking sites and stronger warnings only when combined with other suspicious patterns.
+
+------------------------------------------------------------
+5. CLIPBOARD HIJACKING AND ADDRESS MISMATCH
+------------------------------------------------------------
+
+Goal:
+Detect cases where the user might be tricked into sending funds to the wrong address.
+
+Signals used:
+- The address the user copies (e.g., a wallet address copied from somewhere on the page)
+- The address they paste into a form or input field
+- Differences between copied and pasted addresses that are still valid-looking addresses
+
+Heuristic (high-level concept for later versions):
+If the user:
+- Copies a wallet address, and shortly afterwards pastes a different address that is structurally valid but does not match what was copied,
+
+then warn about possible clipboard hijacking.
+
+Risk level:
+- High when triggered, but may be complex to implement reliably.
+
+Potential false positives:
+- User intentionally pasting a different address for another transaction.
+- Cases where the user copies text that includes multiple addresses.
+
+Mitigation for false positives:
+- Only warn when the mismatch happens quickly and there is clear evidence the user expected to paste the copied address (e.g., same tab, same transaction flow).
+
+------------------------------------------------------------
+6. URGENCY / PRESSURE-BASED SCAM PATTERNS
+------------------------------------------------------------
+
+Goal:
+Detect pages that try to panic users into acting quickly, which is common in scams.
+
+Signals used:
+- Language indicating urgency and severe consequences, such as:
+  - "urgent", "immediate action required", "your funds will be lost", "account will be closed"
+- Countdown timers with strong threats
+- Combined with wallet-related actions (e.g., "connect now to avoid losing your funds")
+
+Heuristic:
+If the page:
+- Combines strong urgency language with requests to connect a wallet, sign transactions, or enter sensitive information,
+
+then classify as MEDIUM-RISK and display a warning encouraging the user to slow down and verify the site.
+
+Risk level:
+- Medium. Some legitimate services use urgency (e.g., expiring offers), but in crypto it is often abused.
+
+Potential false positives:
+- Legitimate exchanges warning about expiring promotions or deadlines.
+
+Mitigation for false positives:
+- Only trigger the heuristic when urgency language is directly tied to actions affecting the user’s wallet or funds.
+
+------------------------------------------------------------
+7. COMBINING HEURISTICS
+------------------------------------------------------------
+
+Heuristics should not be treated in isolation. The extension will combine multiple rules to determine an overall risk level for the page. Examples:
+
+- Seed phrase harvesting + unknown domain:
+  - Treat as CRITICAL risk and strongly discourage any interaction.
+
+- Brand impersonation + suspicious wallet API usage:
+  - Treat as HIGH risk and show a strong warning.
+
+- Single medium-risk signal on an otherwise normal site:
+  - Treat as LOW to MEDIUM risk and show a softer, informational warning.
+
+These heuristic rules will be used alongside reputation data and will feed into the overall risk scoring system for the page.
+
+
+------------------------------------------------------------
+RISK SCORING
+------------------------------------------------------------
+
+Instead of treating pages as simply “safe” or “unsafe”, the extension will assign each page a numeric risk score based on the signals and heuristic rules described above. 
+This score will then be mapped to discrete risk levels, which determine what type of warning (if any) is shown to the user.
+
+The scoring model can be tuned over time, but Version 1 will use simple fixed weights for each signal.
+
+------------------------------------------------------------
+RISK LEVELS
+------------------------------------------------------------
+
+The extension will use four main risk levels:
+
+- Level 0: SAFE
+  - No warning shown. Extension may still log data for learning/debugging.
+
+- Level 1: CAUTION (LOW RISK)
+  - Subtle indication (e.g., icon change or small banner) reminding the user to be careful.
+
+- Level 2: WARNING (MEDIUM RISK)
+  - Clear, visible banner or modal recommending the user double-check the site before interacting.
+
+- Level 3: CRITICAL (HIGH RISK)
+  - Strong, full-width or blocking warning advising the user not to proceed, with an explicit “I understand the risk” override if allowed.
+
+These levels are driven by a numeric score computed for each page.
+
+------------------------------------------------------------
+SCORE RANGE AND THRESHOLDS
+------------------------------------------------------------
+
+Each page starts with a base score of 0. Signals and heuristic rules add to (or subtract from) this score.
+
+Initial Version 1 thresholds (subject to tuning):
+
+- 0 to 19      → Level 0: SAFE
+- 20 to 39     → Level 1: CAUTION
+- 40 to 69     → Level 2: WARNING
+- 70 and above → Level 3: CRITICAL
+
+If the score exceeds an upper bound (for example, 100+), the page can either be capped at a maximum score or treated as a “hard fail” condition internally. This can be refined later.
+
+------------------------------------------------------------
+BASE WEIGHTS FOR KEY SIGNALS
+------------------------------------------------------------
+
+These weights are starting values for Version 1 and can be adjusted based on testing and false positive/negative rates.
+
+Reputation-based signals:
+- Domain on known malicious (blocklist):        +90
+- Domain on known suspicious watchlist:        +50
+- Domain on known good (allowlist):            -60
+
+Seed phrase / private key harvesting:
+- Seed phrase / private key text present:      +30
+- Matching input fields / textareas present:   +40
+- Multiple fields likely forming 12/24 words:  +20
+
+Fake wallet support / recovery:
+- “Support/help” + wallet brand keywords:      +25
+- Sensitive data requested via form:           +35
+
+Brand impersonation and typosquatting:
+- Domain similar to known brand (typosquat):   +30
+- Brand heavily referenced on page:            +20
+- Domain NOT in official allowlist:           +10
+
+Suspicious wallet API usage:
+- Wallet API called on page load
+  without clear user action:                   +20
+- Repeated connection/approval prompts:       +15
+- Detection of wide/unlimited token approval: +25
+
+Clipboard hijacking / address mismatch:
+- Copied vs pasted address mismatch detected:  +60
+
+Urgency / pressure-based scam patterns:
+- Strong urgency language detected:            +15
+- Urgency directly tied to wallet/funds:      +15
+
+Neutral or slightly negative signals:
+- Clear HTTPS with valid cert (normal case):   -5
+- Domain with long, stable history
+  on allowlist:                                -10
+
+These weights are intentionally simple and conservative. The goal for Version 1 is to catch obvious scams while keeping false positives manageable.
+
+------------------------------------------------------------
+COMBINING SIGNALS
+------------------------------------------------------------
+
+The total risk score for a page is computed as:
+
+- Start at 0
+- Add weights for each triggered heuristic rule
+- Add or subtract weights from reputation (blocklists/allowlists)
+- Optionally clamp the final score within a min/max range
+
+Examples:
+
+1) Clear seed phrase harvesting on unknown domain:
+   - Seed phrase text:                        +30
+   - Input fields collecting seed phrase:     +40
+   - Multiple seed-like fields:              +20
+   - Unknown (neither good nor bad) domain:   +0
+   ----------------------------------------------
+   Total score:                               90 → Level 3 (CRITICAL)
+
+2) Brand impersonation with suspicious approvals:
+   - Typosquatted brand domain:              +30
+   - Brand heavily referenced on page:       +20
+   - Suspicious wallet approvals:            +25
+   ----------------------------------------------
+   Total score:                               75 → Level 3 (CRITICAL)
+
+3) Legit exchange with some urgency but no other issues:
+   - Urgency language:                       +15
+   - HTTPS + valid cert:                     -5
+   - No seed phrase requests, no weird APIs:  +0
+   ----------------------------------------------
+   Total score:                               10 → Level 0 (SAFE) or Level 1 (CAUTION), depending on later tuning
+
+4) Domain on allowlist, no suspicious behaviour:
+   - Domain on allowlist:                    -60
+   - No heuristics triggered:                 +0
+   ----------------------------------------------
+   Total score:                              -60 → Level 0 (SAFE)
+
+------------------------------------------------------------
+SPECIAL CASES AND OVERRIDES
+------------------------------------------------------------
+
+Certain signals may trigger immediate high risk regardless of the exact numeric score. For example:
+
+- Domain on known malicious list AND seed phrase harvesting detected:
+  - Automatically treat as Level 3 (CRITICAL), even if the summed score would be slightly lower.
+
+- Domain on allowlist with only low-level heuristics (e.g., mild urgency):
+  - Cap the risk level at Level 1 (CAUTION) to avoid over-warning on trusted sites.
+
+These overrides are intended to keep the system both practical and user-friendly.
+
+------------------------------------------------------------
+TUNING AND FUTURE IMPROVEMENTS
+------------------------------------------------------------
+
+The weights and thresholds defined here are Version 1 defaults. They are expected to change based on:
+
+- Real-world testing against known phishing/scam sites
+- Observed false positives on legitimate dApps and exchanges
+- User feedback and telemetry (if collected in a privacy-preserving way)
+
+Future versions may introduce:
+- Per-category scores (e.g., “credential theft risk”, “transaction risk”)
+- Time-based decay or history-based adjustments per domain
+- Adaptive or ML-assisted scoring (while retaining explainability for users)
+

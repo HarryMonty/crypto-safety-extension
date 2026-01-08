@@ -1,0 +1,306 @@
+CRYPTO-SAFETY BROWSER EXTENSION
+ARCHITECTURE (VERSION 1 – CHROME FIRST, FIREFOX SECOND)
+
+------------------------------------------------------------
+1. OVERVIEW
+------------------------------------------------------------
+
+This document describes the technical architecture for the Crypto-Safety browser extension.
+
+Goal:
+Implement a browser extension that:
+- Monitors web pages the user visits
+- Extracts relevant security signals (URL, DOM, forms, behaviour)
+- Computes a risk score using the risk model defined in the Threat Model document
+- Displays appropriate warnings to the user based on risk level
+
+Primary target:
+- Version 1: Chromium-based browsers (Chrome, Brave, Edge)
+- Version 1.1: Firefox support added after Chrome MVP is stable
+
+The architecture is based on the WebExtensions model:
+- Background script (logic, risk scoring, reputation checks)
+- Content script(s) (page scanning, DOM access, UI injection)
+- Optional popup UI (status overview)
+- Options page (user settings, if needed later)
+
+------------------------------------------------------------
+2. CORE COMPONENTS
+------------------------------------------------------------
+
+The extension will be split into the following logical components:
+
+1) Background Script
+2) Content Script (Page Scanner)
+3) Content Script (Warning UI Injector)
+4) (Optional) Popup UI
+5) (Optional) Options / Settings Page
+6) Shared Utility Module(s)
+
+Each component has a clear responsibility and communicates via message passing.
+
+------------------------------------------------------------
+2.1 BACKGROUND SCRIPT
+------------------------------------------------------------
+
+Responsibilities:
+- Maintain overall extension state.
+- Receive analysis results from content scripts.
+- Run reputation checks (blocklists/allowlists, watchlists).
+- Apply heuristic rules and calculate the risk score.
+- Decide which risk level applies to the current page.
+- Send decisions back to the content script (what warning to show).
+- Log events for debugging (locally only in Version 1).
+
+Key tasks:
+- Listen for messages from content scripts containing:
+  - URL/domain
+  - Extracted signals (e.g., "seedPhraseTextFound: true", "walletApiUsage: suspicious", etc.)
+- Look up the domain in:
+  - local/remote blocklists
+  - local allowlists
+  - any "suspicious" watchlists (if implemented)
+- Combine reputation data + signals using the Risk Scoring model.
+- Determine the risk level (SAFE / CAUTION / WARNING / CRITICAL).
+- Send a response message to the tab’s content script with:
+  - riskLevel
+  - explanation or reason codes (optional, useful later for UI or logs).
+
+Notes:
+- For Chrome, this will likely be a service worker (MV3).
+- For Firefox, it will be a traditional background script (with similar logic).
+
+------------------------------------------------------------
+2.2 CONTENT SCRIPT – PAGE SCANNER
+------------------------------------------------------------
+
+Responsibilities:
+- Run in the context of each visited web page (where permissions allow).
+- Extract signals from:
+  - URL and document location
+  - DOM content (text, forms, iframes)
+  - Basic script behaviour (where safely detectable)
+- Package signals into a structured “page analysis” object.
+- Send the analysis to the background script for scoring.
+- Listen for risk decisions and pass them to the UI injector.
+
+Key tasks:
+- On page load (and possibly on DOM changes):
+  - Read current URL and domain.
+  - Scan visible text for dangerous phrases:
+    - “seed phrase”, “recovery phrase”, “private key”, etc.
+  - Inspect form elements:
+    - Count and classify input fields near suspicious text.
+    - Detect patterns consistent with 12/24-word seed phrases.
+  - Optionally observe high-level wallet API usage patterns (e.g., presence of window.ethereum access, but without deep hooking in Version 1).
+  - Detect urgency/pressure language in prominent areas of the page.
+- Construct a structured object representing signals, e.g. conceptually:
+  - seedPhraseTextFound: true/false
+  - seedPhraseInputsDetected: true/false
+  - supportThemeDetected: true/false
+  - brandNameMatches: [ ... ]
+  - urgencyLanguageDetected: true/false
+  - walletApiUsageSuspicious: true/false
+  - etc.
+- Send this object + URL/domain to the background script via message.
+
+Notes:
+- Version 1 can focus on initial load scan only.
+- Later versions can add incremental scanning with MutationObservers.
+
+------------------------------------------------------------
+2.3 CONTENT SCRIPT – WARNING UI INJECTOR
+------------------------------------------------------------
+
+Responsibilities:
+- Display warnings inside the page based on risk level.
+- Keep the UI separated from core scanning logic to avoid mixing concerns.
+
+Key tasks:
+- Listen for messages from the background script containing:
+  - riskLevel
+  - optional reason codes or explanation text
+- Based on riskLevel, inject appropriate UI into the page:
+  - Level 1 (CAUTION):
+    - Small banner or strip at top of page.
+  - Level 2 (WARNING):
+    - Larger banner or semi-modal overlay with clear message.
+  - Level 3 (CRITICAL):
+    - Full-width, prominent warning area, optionally with:
+      - “Go back” / “Close tab” suggestions
+      - “I understand the risk” override (if allowed in settings)
+- Ensure the injected UI:
+  - Is visually distinct from the page (to avoid spoofing).
+  - Is clearly attributable to the extension (e.g., consistent colours, small logo/text).
+  - Does not break the layout of the underlying page more than necessary.
+
+Notes:
+- UI should be implemented with minimal dependencies (no heavy frameworks for V1).
+- Styles should be namespaced to avoid clashing with site CSS.
+
+------------------------------------------------------------
+2.4 POPUP UI (OPTIONAL FOR VERSION 1)
+------------------------------------------------------------
+
+Popup UI is the interface shown when the user clicks the extension icon in the toolbar.
+
+Potential responsibilities:
+- Show current tab’s risk level and key reasons.
+- Allow user to:
+  - See whether the domain is on an allowlist or blocklist.
+  - Temporarily ignore warnings for this session (if implemented).
+  - Access a brief “what this warning means” explanation.
+
+For Version 1:
+- This can be postponed or kept extremely minimal.
+- Core functionality should not rely on the popup.
+
+------------------------------------------------------------
+2.5 OPTIONS / SETTINGS PAGE (FUTURE)
+------------------------------------------------------------
+
+An options page may be used later for:
+
+- Allowing advanced users to:
+  - Manage personal allowlist/blocklist entries.
+  - Adjust sensitivity (e.g., whether Level 1 warnings should be shown).
+  - Opt out of remote reputation checks (privacy setting).
+
+Version 1:
+- Settings can be hard-coded or very limited.
+- Options page is not strictly required to get the MVP working.
+
+------------------------------------------------------------
+2.6 SHARED UTILITY MODULES
+------------------------------------------------------------
+
+Logical helper modules (even if they are just separate JS files) may include:
+
+- Domain utilities:
+  - Extract base domain, subdomain, TLD.
+  - Compare domains (for typosquatting / brand similarity).
+- Text scanning utilities:
+  - Search for suspicious phrases.
+  - Detect urgency patterns.
+- Heuristic evaluation utilities:
+  - Convert signals into partial scores.
+  - Apply special-case overrides.
+- Messaging utilities:
+  - Wrap message passing between content and background scripts.
+
+These modules keep the core logic reusable between Chrome and Firefox builds.
+
+------------------------------------------------------------
+3. DATA FLOW
+------------------------------------------------------------
+
+High-level flow when the user visits a page:
+
+1) User navigates to a URL in the browser.
+
+2) Content Script (Page Scanner) runs on the page:
+   - Reads URL and domain.
+   - Scans DOM for:
+     - Dangerous phrases (seed phrase, private key, etc.).
+     - Form structures (input fields near sensitive text, multi-field phrases).
+     - Urgency/pressure language.
+   - Optionally notes wallet API usage patterns.
+   - Builds a “PageSignals” object summarising findings.
+
+3) Content Script sends “PageSignals” + domain/URL to Background Script via message.
+
+4) Background Script:
+   - Performs reputation checks:
+     - Is the domain in a known malicious blocklist?
+     - Is the domain on a local/official allowlist?
+     - Is it on any watchlist, if implemented?
+   - Uses PageSignals + reputation results as input to the Risk Scoring model.
+   - Computes numeric risk score and maps it to a risk level.
+   - Applies any special-case overrides (e.g., malicious domain + seed phrase = automatic CRITICAL).
+
+5) Background Script sends back to the Content Script:
+   - riskLevel (SAFE / CAUTION / WARNING / CRITICAL)
+   - optional structured reason codes (e.g., [“SEED_PHRASE_FORM”, “UNKNOWN_DOMAIN”])
+
+6) Content Script – Warning UI Injector:
+   - Receives the riskLevel and reasons.
+   - Injects appropriate warning UI into the page.
+   - Optionally logs reasons or exposes a “learn more” link in the UI.
+
+7) User sees the warning:
+   - Can choose to:
+     - Do nothing (heeds the warning, leaves the page).
+     - Proceed cautiously.
+     - In CRITICAL cases, explicitly click “I understand the risk” if override is allowed.
+
+------------------------------------------------------------
+4. PERMISSIONS AND SECURITY CONSIDERATIONS
+------------------------------------------------------------
+
+Required permissions (Chrome-first thinking, to be reviewed for Firefox):
+
+- "<all_urls>" or a restricted match pattern:
+  - So the content script can run on most pages and scan for threats.
+- "tabs":
+  - To get tab URLs and send messages.
+- "storage":
+  - To store local settings, allowlists/blocklists, and risk thresholds.
+- Possibly "scripting" (depending on MV3 details):
+  - For injecting content scripts and UI.
+
+Principles:
+- Ask for the minimum set of permissions needed for Version 1.
+- Avoid unnecessary access to user data (e.g., do not log full page contents).
+- Prefer processing signals locally where possible.
+- If remote reputation checks are introduced, do so in a privacy-preserving way (e.g., hashing or partial information).
+
+------------------------------------------------------------
+5. CHROME → FIREFOX PORTING STRATEGY
+------------------------------------------------------------
+
+Version 1 will be implemented and tested on Chrome/Chromium first.
+
+When porting to Firefox:
+
+- Reuse:
+  - Content scripts (page scanning and UI).
+  - Shared utility modules.
+  - Risk scoring logic and heuristics.
+
+- Adapt:
+  - Background script specifics:
+    - Chrome MV3 uses a service worker; Firefox uses traditional background pages (as of now).
+  - Manifest differences (MV3 vs Firefox manifest version).
+  - Permissions syntax where they differ slightly.
+
+Strategy:
+- Keep browser-specific code isolated wherever possible.
+- If necessary, introduce a small “browser abstraction” utility that wraps APIs like:
+  - `chrome` vs `browser`
+  - messaging differences
+- Test heuristics and UI behaviour on Firefox after Chrome MVP is working.
+
+------------------------------------------------------------
+6. VERSION 1 IMPLEMENTATION PRIORITIES
+------------------------------------------------------------
+
+To keep the MVP focused and achievable, Version 1 will prioritise:
+
+1) Single primary rule end-to-end:
+   - Seed phrase / private key harvesting detection.
+   - From DOM scan → signals → risk score → warning UI.
+
+2) Basic reputation check:
+   - A simple local blocklist/allowlist file for testing.
+   - No complex remote API integration initially.
+
+3) Simple warning UI:
+   - One consistent banner style for Level 2 & Level 3.
+   - Clear text: “This site appears to be asking for your wallet seed phrase. Never enter your seed phrase into a website.”
+
+4) Logging and debugging:
+   - Console logs or simple internal logs indicating:
+     - What signals were detected.
+     - What risk level was assigned.
+
+Additional heuristic rules (support scams, brand impersonation, urgency, clipboard hijacking) can be enabled incrementally once the full pipeline is stable.
