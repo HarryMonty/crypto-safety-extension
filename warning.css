@@ -1,0 +1,122 @@
+#cryptoSafetyWarningPopup {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    width: 380px;
+    max-width: calc(100vw - 32px);
+    z-index: 2147483647;
+    border-radius: 16px;
+    overflow: hidden;
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+}
+
+/* Card background */
+#cryptoSafetyWarningPopup .cs-card {
+    background: rgba(17, 17, 17, 0.96);
+    color: #fff;
+    border: 1px solid rgba(255, 59, 59, 0.55);
+}
+
+/* Header */
+#cryptoSafetyWarningPopup .cs-header {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 12px 10px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#cryptoSafetyWarningPopup .cs-title {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-weight: 750;
+    font-size: 14px;
+    letter-spacing: 0.2px;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+}
+
+#cryptoSafetyWarningPopup .cs-badge {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(255, 59, 59, 0.18);
+    border: 1px solid rgba(255, 59, 59, 0.4);
+    color: #ffb3b3;
+}
+
+#cryptoSafetyWarningPopup .cs-actions {
+    display: flex;
+    gap: 4px;
+}
+
+#cryptoSafetyWarningPopup button {
+    appearance: none;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff;
+    padding: 6px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+#cryptoSafetyWarningPopup button:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Body */
+#cryptoSafetyWarningPopup .cs-body {
+    padding: 12px;
+}
+
+#cryptoSafetyWarningPopup .cs-msg {
+    font-size: 13px;
+    line-height: 1.35;
+    margin-bottom: 10px;
+    color: rgba(255, 255, 255, 0.92);
+}
+
+#cryptoSafetyWarningPopup .cs-meta {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.72);
+    margin-bottom: 10px;
+}
+
+/* Details collapsible */
+#cryptoSafetyWarningPopup details {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 10px;
+}
+
+#cryptoSafetyWarningPopup summary {
+    cursor: pointer;
+    list-style: none;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.82);
+    user-select: none;
+}
+
+#cryptoSafetyWarningPopup summary::-webkit-details-marker {
+    display: none;
+}
+
+#cryptoSafetyWarningPopup .cs-detailText {
+    margin-top: 8px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.72);
+    line-height: 1.35;
+}
+
+/* Minimized pill state */
+#cryptoSafetyWarningPopup.cs-min {
+    width: 260px;
+}
+
+#cryptoSafetyWarningPopup.cs-min .cs-body {
+    display: none;
+}

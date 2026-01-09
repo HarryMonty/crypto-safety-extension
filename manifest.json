@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Crypto Safety (MVP)",
+  "version": "0.1.0",
+  "description": "Detects suspicious pages targeting crypto wallet users.",
+  "permissions": ["storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["warning.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
