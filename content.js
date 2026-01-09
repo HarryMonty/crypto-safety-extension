@@ -1,65 +1,100 @@
-// Notify the background script that the page has loaded
-//chrome.runtime.sendMessage(
-//  { type: "PAGE_LOADED", url: window.location.href },
-//  (response) => {
-//    console.log("Content got response:", response);
-//  }
-//);
-
 (() => {
+    // Storage helpers
+    function getIgnoredDomains() {
+        return new Promise((resolve) => {
+            chrome.storage.local.get({ ignoredDomains: [] }, (data) => {
+                resolve(Array.isArray(data.ignoredDomains) ? data.ignoredDomains : []);
+            });
+        });
+    }
+
+    function addIgnoredDomain(domainKey) {
+        return new Promise((resolve) => {
+            chrome.storage.local.get({ ignoredDomains: [] }, (data) => {
+                const current = Array.isArray(data.ignoredDomains) ? data.ignoredDomains : [];
+                if (!current.includes(domainKey)) current.push(domainKey);
+                chrome.storage.local.set({ ignoredDomains: current }, () => resolve(current));
+            });
+        });
+    }
+
+    // Messages from popup
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+        if (!msg) return;
+
+        if (msg.type === "RESCAN") {
+            window.location.reload();
+            return;
+        }
+
+        if (msg.type === "IGNORE_DOMAIN_UPDATED") {
+            const existing = document.getElementById("cryptoSafetyWarningPopup");
+            if (existing) existing.remove();
+
+            console.log("[CryptoSafety] Ignore updated:", msg.domain, "ignored:", msg.ignored);
+            sendResponse({ ok: true });
+            return;
+        }
+    });
+
     // Prevent duplicates
-    if (window._cryotoSafetyInjected) return;
-    window._cryotoSafetyInjected = true;
+    if (window._cryptoSafetyInjected) return;
+    window._cryptoSafetyInjected = true;
 
-    const KEYWORDS = [
-        "seed phrase",
-        "recovery phrase",
-        "secret recovery phrase",
-        "private key",
-        "12 words",
-        "24 words",
-    ];
+    const domainKey = window.location.hostname || `file://${window.location.pathname}`;
 
-    // Detect signals
-    const pageText = (document.body?.innerText || "").toLowerCase();
-    const seedPhraseTextFound = KEYWORDS.some((keyword) => pageText.includes(keyword));
+    // Scan + send
+    (async () => {
+        const ignored = await getIgnoredDomains();
+        if (ignored.includes(domainKey)) {
+            console.log(`[CryptoSafety] Site ${domainKey} is ignored, skipping checks.`);
+            return;
+        }
 
-    // Detect inputs/form signal
-    const inputs = Array.from(document.querySelectorAll("input"));
-    const textareas = Array.from(document.querySelectorAll("textarea"));
+        const KEYWORDS = [
+            "seed phrase",
+            "recovery phrase",
+            "secret recovery phrase",
+            "private key",
+            "12 words",
+            "24 words",
+        ];
 
-    const inputCount = inputs.length;
-    const hasTextArea = textareas.length > 0;
+        const pageText = (document.body?.innerText || "").toLowerCase();
+        const seedPhraseTextFound = KEYWORDS.some((kw) => pageText.includes(kw));
 
-    // Simple rules for V1:
-        // * Text area often used to paste full seed phrase
-        // * 12+ inputs often used for 12-word phrase
-        // * 24+ inputs sometimes used for 24-word phrase
-    const seedPhraseInputsFound = hasTextArea || inputCount >= 12;
+        const inputs = Array.from(document.querySelectorAll("input"));
+        const textareas = Array.from(document.querySelectorAll("textarea"));
 
-    // Build signals object
-    const pageSignals = {
-        type: "PAGE_SIGNALS",
-        url: window.location.href,
-        seedPhraseTextFound,
-        inputCount,
-        hasTextArea,
-        seedPhraseInputsFound,
-    };
+        const inputCount = inputs.length;
+        const hasTextArea = textareas.length > 0;
 
-    console.log("[CryptoSafety]: Signals:", pageSignals);
+        // V1 rule
+        const seedPhraseInputsFound = hasTextArea || inputCount >= 12;
 
-    // Send signals to background, get risk decision
-    chrome.runtime.sendMessage(pageSignals, (response) => {
-        console.log("[CryptoSafety]: Background response:", response);
+        const pageSignals = {
+            type: "PAGE_SIGNALS",
+            url: window.location.href,
+            seedPhraseTextFound,
+            inputCount,
+            hasTextArea,
+            seedPhraseInputsFound,
+        };
+
+        console.log("[CryptoSafety] Signals:", pageSignals);
+
+        chrome.runtime.sendMessage(pageSignals, (response) => {
+        console.log("[CryptoSafety] Background response:", response);
 
         if (!response || !response.ok) return;
 
         if (response.riskLevel === "CRITICAL") {
             showWarningPopup(response.reasons || []);
         }
-    });
+        });
+    })();
 
+    // UI
     function showWarningPopup(reasons) {
         if (document.getElementById("cryptoSafetyWarningPopup")) return;
 
@@ -67,52 +102,56 @@
         container.id = "cryptoSafetyWarningPopup";
 
         const reasonsText =
-            reasons && reasons.length > 0
-            ? reasons.join(", ")
-            : "suspicious seed phrase form pattern";
-
-        const domain = window.location.hostname;
+        reasons && reasons.length > 0 ? reasons.join(", ") : "suspicious seed phrase form pattern";
 
         container.innerHTML = `
-            <div class="cs-card">
-                <div class="cs-header">
-                    <div class="cs-title">
-                        <span>⚠ Crypto Safety</span>
-                        <span class="cs-badge">HIGH RISK</span>
-                    </div>
-                    <div class="cs-actions">
-                        <button id="csMinBtn" title="Minimize">Minimize</button>
-                        <button id="csDismissBtn" title="Dismiss">Dismiss</button>
-                    </div>
-                </div>
-
-                <div class="cs-body">
-                    <div class="cs-msg">
-                        This site appears to be asking for your seed phrase/private key.
-                        Never enter your seed phrase into a website.
-                    </div>
-
-                    <div class="cs-meta">
-                        Site: <b>${domain}</b><br/>
-                        Detected: <b>${reasonsText}</b>
-                    </div>
-
-                    <details>
-                        <summary>Why am I seeing this?</summary>
-                        <div class="cs-detailText">
-                            Pages that request seed phrases/private keys are commonly phishing attempts.
-                            Legitimate wallets and dApps should never ask you to type your seed phrase into a web form.
-                            If you were sent here by a link or an “airdrop/claim” page, assume it’s a scam until proven otherwise.
-                        </div>
-                    </details>
-                </div>
+        <div class="cs-card">
+            <div class="cs-header">
+            <div class="cs-title">
+                <span>⚠ Crypto Safety</span>
+                <span class="cs-badge">HIGH RISK</span>
             </div>
+            <div class="cs-actions">
+                <button id="csMinBtn" title="Minimize">Minimize</button>
+                <button id="csIgnoreBtn" title="Don't warn on this site">Ignore site</button>
+                <button id="csDismissBtn" title="Dismiss">Dismiss</button>
+            </div>
+            </div>
+
+            <div class="cs-body">
+            <div class="cs-msg">
+                This site appears to be asking for your seed phrase/private key.
+                Never enter your seed phrase into a website.
+            </div>
+
+            <div class="cs-meta">
+                Site: <b>${domainKey}</b><br/>
+                Detected: <b>${reasonsText}</b>
+            </div>
+
+            <details>
+                <summary>Why am I seeing this?</summary>
+                <div class="cs-detailText">
+                Pages that request seed phrases/private keys are commonly phishing attempts.
+                Legitimate wallets and dApps should never ask you to type your seed phrase into a web form.
+                If you were sent here by a link or an “airdrop/claim” page, assume it’s a scam until proven otherwise.
+                </div>
+            </details>
+            </div>
+        </div>
         `;
 
         document.documentElement.appendChild(container);
 
         const dismissBtn = container.querySelector("#csDismissBtn");
         const minBtn = container.querySelector("#csMinBtn");
+        const ignoreBtn = container.querySelector("#csIgnoreBtn");
+
+        ignoreBtn.addEventListener("click", async () => {
+            await addIgnoredDomain(domainKey);
+            container.remove();
+            console.log(`[CryptoSafety] Site ${domainKey} added to ignored list.`);
+        });
 
         dismissBtn.addEventListener("click", () => container.remove());
 

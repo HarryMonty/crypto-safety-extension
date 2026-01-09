@@ -2,7 +2,7 @@
     position: fixed;
     top: 16px;
     right: 16px;
-    width: 380px;
+    width: 520px;
     max-width: calc(100vw - 32px);
     z-index: 2147483647;
     border-radius: 16px;
@@ -55,6 +55,7 @@
 }
 
 #cryptoSafetyWarningPopup button {
+    display: flex;
     appearance: none;
     border: 1px solid rgba(255, 255, 255, 0.16);
     background: rgba(255, 255, 255, 0.06);
@@ -63,6 +64,8 @@
     border-radius: 12px;
     font-size: 12px;
     cursor: pointer;
+    flex-wrap: nowrap;
+    white-space: nowrap;
 }
 
 #cryptoSafetyWarningPopup button:hover {
