@@ -8,11 +8,11 @@
         });
     }
 
-    function addIgnoredDomain(domainKey) {
+    function addIgnoredDomain(siteKey) {
         return new Promise((resolve) => {
             chrome.storage.local.get({ ignoredDomains: [] }, (data) => {
                 const current = Array.isArray(data.ignoredDomains) ? data.ignoredDomains : [];
-                if (!current.includes(domainKey)) current.push(domainKey);
+                if (!current.includes(siteKey)) current.push(siteKey);
                 chrome.storage.local.set({ ignoredDomains: current }, () => resolve(current));
             });
         });
@@ -22,16 +22,16 @@
     chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (!msg) return;
 
-        if (msg.type === "RESCAN") {
+        if (msg.type === MessagingUtils.MSG.RESCAN) {
             window.location.reload();
             return;
         }
 
-        if (msg.type === "IGNORE_DOMAIN_UPDATED") {
+        if (msg.type === MessagingUtils.MSG.IGNORE_DOMAIN_UPDATED) {
             const existing = document.getElementById("cryptoSafetyWarningPopup");
             if (existing) existing.remove();
 
-            console.log("[CryptoSafety] Ignore updated:", msg.domain, "ignored:", msg.ignored);
+            console.log("[CryptoSafety] Ignore updated:", msg.siteKey, "ignored:", msg.ignored);
             sendResponse({ ok: true });
             return;
         }
@@ -41,27 +41,20 @@
     if (window._cryptoSafetyInjected) return;
     window._cryptoSafetyInjected = true;
 
-    const domainKey = window.location.hostname || `file://${window.location.pathname}`;
+    const siteKey = getSiteKeyFromUrl(window.location.href);
 
     // Scan + send
     (async () => {
         const ignored = await getIgnoredDomains();
-        if (ignored.includes(domainKey)) {
-            console.log(`[CryptoSafety] Site ${domainKey} is ignored, skipping checks.`);
+        if (ignored.includes(siteKey)) {
+            console.log(`[CryptoSafety] Site ${siteKey} is ignored, skipping checks.`);
             return;
         }
 
-        const KEYWORDS = [
-            "seed phrase",
-            "recovery phrase",
-            "secret recovery phrase",
-            "private key",
-            "12 words",
-            "24 words",
-        ];
-
-        const pageText = (document.body?.innerText || "").toLowerCase();
-        const seedPhraseTextFound = KEYWORDS.some((kw) => pageText.includes(kw));
+       const pageText = document.body?.innerText || "";
+       const seedHits = TextScanUtils.seedPhraseMatches(pageText);
+       const seedPhraseTextFound = seedHits.length > 0;
+       console.log("[CryptoSafety] seed hits:", seedHits);
 
         const inputs = Array.from(document.querySelectorAll("input"));
         const textareas = Array.from(document.querySelectorAll("textarea"));
@@ -69,28 +62,25 @@
         const inputCount = inputs.length;
         const hasTextArea = textareas.length > 0;
 
-        // V1 rule
-        const seedPhraseInputsFound = hasTextArea || inputCount >= 12;
-
         const pageSignals = {
-            type: "PAGE_SIGNALS",
+            type: MessagingUtils.MSG.PAGE_SIGNALS,
             url: window.location.href,
             seedPhraseTextFound,
+            seedHits,
             inputCount,
-            hasTextArea,
-            seedPhraseInputsFound,
+            hasTextArea
         };
 
         console.log("[CryptoSafety] Signals:", pageSignals);
 
-        chrome.runtime.sendMessage(pageSignals, (response) => {
-        console.log("[CryptoSafety] Background response:", response);
+        chrome.runtime.sendMessage(pageSignals, (response) => { // UTIL:msg
+            console.log("[CryptoSafety] Background response:", response);
 
-        if (!response || !response.ok) return;
+            if (!response || !response.ok) return;
 
-        if (response.riskLevel === "CRITICAL") {
-            showWarningPopup(response.reasons || []);
-        }
+            if (response.riskLevel === "CRITICAL") {
+                showWarningPopup(response.reasons || []);
+            }
         });
     })();
 
@@ -125,7 +115,7 @@
             </div>
 
             <div class="cs-meta">
-                Site: <b>${domainKey}</b><br/>
+                Site: <b>${siteKey}</b><br/>
                 Detected: <b>${reasonsText}</b>
             </div>
 
@@ -148,9 +138,9 @@
         const ignoreBtn = container.querySelector("#csIgnoreBtn");
 
         ignoreBtn.addEventListener("click", async () => {
-            await addIgnoredDomain(domainKey);
+            await addIgnoredDomain(siteKey);
             container.remove();
-            console.log(`[CryptoSafety] Site ${domainKey} added to ignored list.`);
+            console.log(`[CryptoSafety] Site ${siteKey} added to ignored list.`);
         });
 
         dismissBtn.addEventListener("click", () => container.remove());

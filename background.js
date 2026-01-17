@@ -5,58 +5,46 @@
 //});
 
 // Store last decision per tab
+importScripts("utils/heuristicUtils.js");
+
+importScripts("utils/messagingUtils.js");
+
 const tabResults = new Map();
 
 function getTabId(sender, message) {
     return sender?.tab?.id ?? message?.tabId ?? null;
 }
 
+const lastResultByTab = {};
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    // popup asking for last known result
-    if (message && message.type === "GET_LAST_RESULT") {
-        const tabId = message.tabId;
-        const data = tabResults.get(tabId);
+    if (!message || !message.type) return;
 
-        sendResponse(
-        data
-            ? { ok: true, ...data }
-            : { ok: true, riskLevel: "UNKNOWN", reasons: [], url: null, ts: null }
-        );
-        return true;
-    }
+    if (message.type === MessagingUtils.MSG.PAGE_SIGNALS) {
+        const tabId = sender.tab?.id;
 
-    // content script sending signals
-    if (!message || message.type !== "PAGE_SIGNALS") {
-        sendResponse({ ok: true, ignored: true });
-        return true;
-    }
+        if (tabId == null) {
+            sendResponse({ ok: false, error: "No tab ID" });
+            return;
+        }
 
-    const tabId = getTabId(sender, message);
-    const url = sender?.tab?.url || message.url || "(unknown)";
+        const result = HeuristicUtils.evaluateSignals(message);
 
-    // scoring logic
-    let riskLevel = "SAFE";
-    let reasons = [];
+        lastResultByTab[tabId] = result;
 
-    if (message.seedPhraseTextFound && message.seedPhraseInputsFound) {
-        riskLevel = "CRITICAL";
-        reasons.push("SEED_PHRASE_FORM");
-    }
-
-    // Store decision per tab so popup can read it later
-    if (tabId !== null) {
-        tabResults.set(tabId, {
-        riskLevel,
-        reasons,
-        url,
-        ts: Date.now(),
+        sendResponse({
+            ok: true,
+            ...result,
         });
+        return;
     }
 
-    console.log(`[CryptoSafety] Stored result for tab ${tabId}:`, { riskLevel, reasons, url });
+    if (message.type === MessagingUtils.MSG.GET_LAST_RESULT) {
+        const tabId = message.tabId;
 
-    sendResponse({ ok: true, riskLevel, reasons });
-    return true;
+        sendResponse(lastResultByTab[tabId] || { riskLevel: "UNKNOWN", reasons: [] });
+        return;
+    }
 });
 
 // remove stored results when a tab closes

@@ -3,18 +3,6 @@ async function getActiveTab() {
     return tab;
 }
 
-function getDomainFromUrl(url) {
-    try {
-        const u = new URL(url);
-
-        if (u.protocol === "file:") return `file://${u.pathname}`;
-
-        return u.hostname;
-    } catch {
-        return null;
-    }
-}
-
 function getIgnoredDomains() {
     return new Promise((resolve) => {
         chrome.storage.local.get({ ignoredDomains: [] }, (data) => {
@@ -59,19 +47,19 @@ function setReasons(reasons) {
 
 async function refreshUI() {
     const tab = await getActiveTab();
-    const domain = getDomainFromUrl(tab?.url || "");
-    document.getElementById("siteValue").textContent = domain || "-";
+    const siteKey = getSiteKeyFromUrl(tab?.url || "");
+    document.getElementById("siteValue").textContent = siteKey || "-";
 
     const ignored = await getIgnoredDomains();
-    const isIgnored = domain ? ignored.includes(domain) : false;
+    const isIgnored = siteKey ? ignored.includes(siteKey) : false;
     document.getElementById("ignoredValue").textContent = isIgnored ? "YES" : "NO";
 
     const toggleBtn = document.getElementById("toggleIgnoreBtn");
     toggleBtn.textContent = isIgnored ? "Unignore site" : "Ignore site";
-    toggleBtn.disabled = !domain || domain.length === 0;
+    toggleBtn.disabled = !siteKey || siteKey.length === 0;
 
     chrome.runtime.sendMessage(
-        { type: "GET_LAST_RESULT", tabId: tab?.id },
+        { type: MessagingUtils.MSG.GET_LAST_RESULT, tabId: tab?.id },
         (res) => {
             if (chrome.runtime.lastError) {
             // Popup likely closed or background not reachable
@@ -89,11 +77,11 @@ async function refreshUI() {
 
 document.getElementById("toggleIgnoreBtn").addEventListener("click", async () => {
     const tab = await getActiveTab();
-    const domain = getDomainFromUrl(tab?.url || "");
-    if (!domain || !tab?.id) return;
+    const siteKey = getSiteKeyFromUrl(tab?.url || "");
+    if (!siteKey || !tab?.id) return;
 
     const ignored = await getIgnoredDomains();
-    const idx = ignored.indexOf(domain);
+    const idx = ignored.indexOf(siteKey);
 
     let nowIgnored = false;
 
@@ -101,7 +89,7 @@ document.getElementById("toggleIgnoreBtn").addEventListener("click", async () =>
         ignored.splice(idx, 1);
         nowIgnored = false;
     } else {
-        ignored.push(domain);
+        ignored.push(siteKey);
         nowIgnored = true;
     }
 
@@ -109,7 +97,7 @@ document.getElementById("toggleIgnoreBtn").addEventListener("click", async () =>
 
     chrome.tabs.sendMessage(
         tab.id,
-        { type: "IGNORE_DOMAIN_UPDATED", domain, ignored: nowIgnored },
+        { type: MessagingUtils.MSG.IGNORE_DOMAIND_UPDATED, siteKey, ignored: nowIgnored },
         () => {
         if (chrome.runtime.lastError) {
             console.log("tabs.sendMessage failed:", chrome.runtime.lastError.message);
@@ -125,7 +113,7 @@ document.getElementById("refreshBtn").addEventListener("click", async () => {
     const tab = await getActiveTab();
     if (!tab?.id) return;
 
-    chrome.tabs.sendMessage(tab.id, { type: "RESCAN" }, () => {
+    chrome.tabs.sendMessage(tab.id, { type: MessagingUtils.MSG.RESCAN }, () => {
     if (chrome.runtime.lastError) {
         console.log("RESCAN sendMessage failed:", chrome.runtime.lastError.message);
     }
