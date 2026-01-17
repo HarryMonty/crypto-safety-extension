@@ -1,0 +1,48 @@
+{
+  "manifest_version": 2,
+  "name": "Crypto Safety (MVP/FIREFOX)",
+  "version": "0.1.0",
+  "description": "Detects suspicious pages targeting crypto wallet users.",
+  "permissions": ["storage", "tabs", "<all_urls>"],
+
+  "background": {
+    "scripts": [
+      "utils/browserCompat.js",
+      "utils/heuristicUtils.js",
+      "utils/messagingUtils.js",
+      "background.js"
+    ]
+  },
+
+  "browser_action": {
+    "default_title": "Crypto Safety",
+    "default_popup": "popup.html"
+  },
+
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "utils/browserCompat.js",
+        "utils/siteKey.js",
+        "utils/domainUtils.js",
+        "utils/textScanUtils.js",
+        "utils/messagingUtils.js",
+        "content.js"
+      ],
+      "css": ["warning.css"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "crypto-safety@example.local"
+    }
+  }
+}

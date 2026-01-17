@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Crypto Safety - Settings</title>
+        <link rel="stylesheet" href="options.css">
+    </head>
+    <body>
+        <h1>Crypto Safety - Settings</h1>
+
+        <section>
+            <h2>Ignored Sites</h2>
+            <p>Sites listed here will not show warnings.</p>
+            <ul id="ignoredList"></ul>
+            <p id="emptyState">No ignored sites.</p>
+        </section>
+
+        <section>
+            <h2>Warning Levels</h2>
+            <label>
+                <input type="checkbox" id="showCaution" checked />
+                Show low-risk (Caution) warnings
+            </label>
+            <label>
+                <input type="checkbox" id="showWarning" checked />
+                Show medium-risk (Warning) warnings
+            </label>
+            <p class="note">Critical warnings cannot be disabled.</p>
+        </section>
+
+        <script src="options.js"></script>
+    </body>
+</html>

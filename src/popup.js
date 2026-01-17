@@ -1,6 +1,22 @@
 async function getActiveTab() {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    return tab;
+
+    try {
+        const maybePromise = ext.tabs.query({ active: true, currentWindow: true });
+
+        if (maybePromise && typeof maybePromise.then === "function") {
+            const tabs = await maybePromise;
+            return tabs && tabs.length ? tabs[0] : null;
+        }
+
+        return await new Promise((resolve) => {
+            ext.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                resolve(tabs && tabs.length ? tabs[0] : null);
+            });
+        });
+    } catch (e) {
+        console.log("getActiveTab error:", e);
+        return null;
+    }
 }
 
 function getIgnoredDomains() {
